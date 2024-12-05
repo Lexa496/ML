@@ -117,33 +117,30 @@ train_df = train_df.drop(drop_cols, axis=1)
 test_df = test_df.drop(drop_cols, axis=1)
 
 # -----------------------------------------------------------------------------
-# 3. Построение и оценка модели
+# 3. Построение и оценка модели без GridSearchCV
 # -----------------------------------------------------------------------------
+
 # Разделение данных на обучающую и тестовую выборки
 X = train_df.drop('Survived', axis=1)
 y = train_df['Survived']
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Инициализация модели CatBoost
-model = CatBoostClassifier(random_state=42, logging_level='Silent')
+# Инициализация модели CatBoost с фиксированными параметрами
+model = CatBoostClassifier(
+    iterations=200,          # Количество итераций (можно увеличить для улучшения качества)
+    learning_rate=0.05,      # Скорость обучения
+    depth=6,                 # Глубина деревьев
+    random_seed=42,          # Фиксируем случайное состояние для воспроизводимости
+    logging_level='Silent',  # Отключаем лишние логи
+    early_stopping_rounds=10 # Ранняя остановка для ускорения обучения
+)
 
-# Определение сетки параметров для поиска
-param_grid = {
-    'iterations': [100, 200, 300],
-    'learning_rate': [0.01, 0.05, 0.1],
-    'depth': [4, 6, 8]
-}
+# Обучение модели
+model.fit(X_train, y_train, eval_set=(X_test, y_test), verbose=False)
 
-# Поиск лучших параметров с использованием GridSearchCV
-grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='accuracy')
-grid_search.fit(X_train, y_train)
-
-# Лучшая модель
-best_model = grid_search.best_estimator_
-
-# Оценка лучшей модели на тестовой выборке
-y_pred = best_model.predict(X_test)
-print('\n----- Результаты лучшей модели -----')
+# Оценка модели
+y_pred = model.predict(X_test)
+print('\n----- Результаты модели -----')
 print('Точность:', accuracy_score(y_test, y_pred))
 print('Отчет о Классификации:')
 print(classification_report(y_test, y_pred))
@@ -151,11 +148,12 @@ print('Матрица Конфузии:')
 print(confusion_matrix(y_test, y_pred))
 
 # Важность признаков
-feature_importance = best_model.feature_importances_
+feature_importance = model.feature_importances_
 sorted_idx = np.argsort(feature_importance)
-plt.figure(figsize=(10, 12))
+plt.figure(figsize=(10, 6))
 plt.barh(X.columns[sorted_idx], feature_importance[sorted_idx])
 plt.xlabel("CatBoost Feature Importance")
+plt.title("Importance of Features")
 plt.show()
 
 # -----------------------------------------------------------------------------
@@ -165,4 +163,9 @@ plt.show()
 X_test_final = test_df.drop('Survived', axis=1)
 
 # Предсказание на тестовой выборке
-test_pred = best_model.predict(X_test_final)
+test_pred = model.predict(X_test_final)
+
+# Сохранение результатов
+output = pd.DataFrame({'PassengerId': gender_submission_df['PassengerId'], 'Survived': test_pred})
+output.to_csv('gender_submission.csv', index=False)
+print("Результаты сохранены в файл submission.csv")
